@@ -248,6 +248,33 @@ uint8_t str_to_bool(const char *str, void *num, uint8_t size)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+uint16_t snprintf_tab(char *dst, uint16_t size, uint16_t count)
+{
+    char *dst_tmp = dst;
+    char *eod = dst + size - 1;
+
+    while (count--)
+    {
+        if (dst + (4 - 1) < eod)
+        {
+            memset(dst, ' ', 4);
+        }
+        else if (dst < eod)
+        {
+            *dst = '\0';
+        }
+        dst += 4;
+    }
+
+    if (eod >= dst_tmp)
+    {
+        if (dst <= eod) *dst = '\0';
+        else *eod = '\0';
+    }
+
+    return dst - dst_tmp;
+}
+
 uint16_t snprintf_string(char *dst, uint16_t size, const void *src, uint16_t length)
 {
     char *dst_tmp = dst;
@@ -305,8 +332,13 @@ uint16_t snprintf_string(char *dst, uint16_t size, const void *src, uint16_t len
             default:
                 if (dst + (5 - 1) < eod)
                 {
-                    dst += _snprintf(dst, (5 + 1), "u%04x", (uint8_t)*cp);
+                    _snprintf(dst, (5 + 1), "u%04x", (uint8_t)*cp);
                 }
+                else if (dst < eod)
+                {
+                    *dst = '\0';
+                }
+                dst += 5;
                 break;
             }
         }
@@ -437,7 +469,7 @@ uint8_t ljson_contex_push(ljson_contex_t *contex, uint8_t type)
 #endif
         }
     }
-    if (lstack_free(&contex->stack) < (sizeof(contex->ljson_array_offset) + sizeof(contex->ljson_item_index) + sizeof(contex->ljson_item)))
+    if (lstack_free(&contex->stack) < SIZE_OF_STACK_CONTEX)
     {
         return LJSON_ERROR_STACK_OVER;
     }
@@ -475,7 +507,7 @@ uint8_t ljson_contex_pop(ljson_contex_t *contex, uint8_t type)
     return LJSON_ERROR_NONE;
 }
 
-uint16_t ljson_contex_snprintf(ljson_contex_t *contex, void *buffer, uint16_t size)
+uint16_t ljson_contex_snprintf(ljson_contex_t *contex, void *buffer, uint16_t size, uint8_t fmt)
 {
     char *cp = (char *)buffer;
     char *cp_tmp = cp;
@@ -484,6 +516,7 @@ uint16_t ljson_contex_snprintf(ljson_contex_t *contex, void *buffer, uint16_t si
     uint8_t res;
     ljson_item_t *item_top;
     uint8_t *item_buffer;
+    uint8_t level = 0;
 
     while (1)
     {
@@ -492,6 +525,15 @@ uint16_t ljson_contex_snprintf(ljson_contex_t *contex, void *buffer, uint16_t si
             lstack_top_buffer(&contex->stack, &item_top, sizeof(item_top));
             if (contex->ljson_item_index >= item_top->length)
             {
+                if (fmt)
+                {
+                    level--;
+                    if (contex->ljson_item_index > 0)
+                    {
+                        cp += snprintf_token(cp, ((eob > cp) ? (eob - cp) : 0), "\r\n");
+                        cp += snprintf_tab(cp, ((eob > cp) ? (eob - cp) : 0), level);
+                    }
+                }
                 cp += snprintf_token(cp, ((eob > cp) ? (eob - cp) : 0), (item_top->type == LJSON_ITEM_OBJECT) ? "}" : "]");
                 res = ljson_contex_pop(contex, (item_top->type == LJSON_ITEM_OBJECT) ? LJSON_TYPE_OBJECT_R : LJSON_TYPE_ARRAY_R);
                 if (res != LJSON_ERROR_NONE)
@@ -520,23 +562,38 @@ uint16_t ljson_contex_snprintf(ljson_contex_t *contex, void *buffer, uint16_t si
                 if (contex->ljson_item_index > 0)
                 {
                     cp += snprintf_token(cp, ((eob > cp) ? (eob - cp) : 0), ",");
+                    if (fmt)
+                    {
+                        cp += snprintf_token(cp, ((eob > cp) ? (eob - cp) : 0), "\r\n");
+                    }
                 }
             }
         }
 
         if ((contex->ljson_item->type == LJSON_ITEM_OBJECT) || (contex->ljson_item->type == LJSON_ITEM_ARRAY))
         {
+            if (fmt)
+            {
+                cp += snprintf_tab(cp, ((eob > cp) ? (eob - cp) : 0), level++);
+            }
             if (contex->ljson_item->name != 0)
             {
                 cp += snprintf_string(cp, ((eob > cp) ? (eob - cp) : 0), contex->ljson_item->name, 0);
                 cp += snprintf_token(cp, ((eob > cp) ? (eob - cp) : 0), ":");
+            }
+            cp += snprintf_token(cp, ((eob > cp) ? (eob - cp) : 0), (contex->ljson_item->type == LJSON_ITEM_OBJECT) ? "{" : "[");
+            if (fmt)
+            {
+                if (contex->ljson_item->length > 0)
+                {
+                    cp += snprintf_token(cp, ((eob > cp) ? (eob - cp) : 0), "\r\n");
+                }
             }
             res = ljson_contex_push(contex, (contex->ljson_item->type == LJSON_ITEM_OBJECT) ? LJSON_TYPE_OBJECT_L : LJSON_TYPE_ARRAY_L);
             if (res != LJSON_ERROR_NONE)
             {
                 return 0;
             }
-            cp += snprintf_token(cp, ((eob > cp) ? (eob - cp) : 0), (contex->ljson_item->type == LJSON_ITEM_OBJECT) ? "{" : "[");
 
             continue;
         }
@@ -547,6 +604,10 @@ uint16_t ljson_contex_snprintf(ljson_contex_t *contex, void *buffer, uint16_t si
             return 0;
         }
 
+        if (fmt)
+        {
+            cp += snprintf_tab(cp, ((eob > cp) ? (eob - cp) : 0), level);
+        }
         lstack_top_buffer(&contex->stack, &item_top, sizeof(item_top));
         if (item_top->type == LJSON_ITEM_OBJECT)
         {
@@ -607,7 +668,7 @@ void ljson_parser_init(ljson_parser_t *parser, ljson_callback_t callback, void *
     parser->state = LJSON_AWAIT_VALUE;
     parser->user = user;
     parser->callback = callback;
-    lstack_init(&parser->stack, parser->stack_buffer, LJSON_STACK_SIZE);
+    lstack_init(&parser->stack, parser->stack_buffer, LJSON_TYPE_STACK_SIZE);
 }
 
 uint8_t ljson_parser_feed(ljson_parser_t *parser, const void *buffer, uint16_t length)
@@ -632,7 +693,7 @@ uint8_t ljson_parser_feed(ljson_parser_t *parser, const void *buffer, uint16_t l
         case LJSON_AWAIT_KEY: /* '"', '}' */
             if (*cp == '"')
             {
-                if (lstack_free(&parser->stack) < 1)
+                if (lstack_free(&parser->stack) < SIZE_OF_STACK_TYPE)
                 {
                     return LJSON_ERROR_STACK_OVER;
                 }
@@ -675,7 +736,7 @@ uint8_t ljson_parser_feed(ljson_parser_t *parser, const void *buffer, uint16_t l
                 {
                     return res;
                 }
-                if (lstack_free(&parser->stack) < 1)
+                if (lstack_free(&parser->stack) < SIZE_OF_STACK_TYPE)
                 {
                     return LJSON_ERROR_STACK_OVER;
                 }
@@ -690,7 +751,7 @@ uint8_t ljson_parser_feed(ljson_parser_t *parser, const void *buffer, uint16_t l
                 {
                     return res;
                 }
-                if (lstack_free(&parser->stack) < 1)
+                if (lstack_free(&parser->stack) < SIZE_OF_STACK_TYPE)
                 {
                     return LJSON_ERROR_STACK_OVER;
                 }
@@ -716,7 +777,7 @@ uint8_t ljson_parser_feed(ljson_parser_t *parser, const void *buffer, uint16_t l
             }
             if (*cp == '"')
             {
-                if (lstack_free(&parser->stack) < 1)
+                if (lstack_free(&parser->stack) < SIZE_OF_STACK_TYPE)
                 {
                     return LJSON_ERROR_STACK_OVER;
                 }

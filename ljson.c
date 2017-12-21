@@ -286,65 +286,80 @@ uint16_t snprintf_string(char *dst, uint16_t size, const void *src, uint16_t len
         length--;
     }
 
-    if (dst < eod) *dst = '"';
-    dst++;
-    for (; *cp && length--; cp++)
+    if (*cp)
     {
-        if (((uint8_t)(*cp) >= 0x20) && ((uint8_t)(*cp) != 0x7F) && (*cp != '\"') && (*cp != '\\'))
+        if (dst < eod) *dst = '"';
+        dst++;
+        for (; *cp && length--; cp++)
         {
-            if (dst < eod) *dst = *cp;
-            dst++;
-        }
-        else
-        {
-            if (dst < eod) *dst = '\\';
-            dst++;
-            switch (*cp)
+            if (((uint8_t)(*cp) >= 0x20) && ((uint8_t)(*cp) != 0x7F) && (*cp != '\"') && (*cp != '\\'))
             {
-            case '\\':
+                if (dst < eod) *dst = *cp;
+                dst++;
+            }
+            else
+            {
                 if (dst < eod) *dst = '\\';
                 dst++;
-                break;
-            case '\"':
-                if (dst < eod) *dst = '"';
-                dst++;
-                break;
-            case '\b':
-                if (dst < eod) *dst = 'b';
-                dst++;
-                break;
-            case '\f':
-                if (dst < eod) *dst = 'f';
-                dst++;
-                break;
-            case '\r':
-                if (dst < eod) *dst = 'r';
-                dst++;
-                break;
-            case '\n':
-                if (dst < eod) *dst = 'n';
-                dst++;
-                break;
-            case '\t':
-                if (dst < eod) *dst = 't';
-                dst++;
-                break;
-            default:
-                if (dst + (5 - 1) < eod)
+                switch (*cp)
                 {
-                    _snprintf(dst, (5 + 1), "u%04x", (uint8_t)*cp);
+                case '\\':
+                    if (dst < eod) *dst = '\\';
+                    dst++;
+                    break;
+                case '\"':
+                    if (dst < eod) *dst = '"';
+                    dst++;
+                    break;
+                case '\b':
+                    if (dst < eod) *dst = 'b';
+                    dst++;
+                    break;
+                case '\f':
+                    if (dst < eod) *dst = 'f';
+                    dst++;
+                    break;
+                case '\r':
+                    if (dst < eod) *dst = 'r';
+                    dst++;
+                    break;
+                case '\n':
+                    if (dst < eod) *dst = 'n';
+                    dst++;
+                    break;
+                case '\t':
+                    if (dst < eod) *dst = 't';
+                    dst++;
+                    break;
+                default:
+                    if (dst + (5 - 1) < eod)
+                    {
+                        _snprintf(dst, (5 + 1), "u%04x", (uint8_t)*cp);
+                    }
+                    else if (dst < eod)
+                    {
+                        *dst = '\0';
+                    }
+                    dst += 5;
+                    break;
                 }
-                else if (dst < eod)
-                {
-                    *dst = '\0';
-                }
-                dst += 5;
-                break;
             }
         }
+        if (dst < eod) *dst = '"';
+        dst++;
     }
-    if (dst < eod) *dst = '"';
-    dst++;
+    else
+    {
+        if (dst + (4 - 1) < eod)
+        {
+            _snprintf(dst, (4 + 1), "null");
+        }
+        else if (dst < eod)
+        {
+            *dst = '\0';
+        }
+        dst += 4;
+    }
     if (eod >= dst_tmp)
     {
         if (dst <= eod) *dst = '\0';
